@@ -33,7 +33,7 @@ class FindSimilarSong:
                    'id', 'instrumentalness', 'key', 'liveness', 'loudness', 'mode', 'name', 'popularity',
                    'release_date', 'speechiness', 'tempo']
         self.data = shuffle(self.data, random_state=42)
-        self.data = self.data.head(10000)
+        self.data = self.data.head(20000)
         self.df = pd.DataFrame(self.data, columns=columns)
 
         drop_columns = ['name', 'artists', 'release_date', 'year']

@@ -18,7 +18,7 @@ import joblib
 
 class FindSimilarSong:
 
-    def __init__(self,kmean_model="kmean_model.pkl", data="data/data.csv", ids_clusters="ids.txt", taille_playlist=60):
+    def __init__(self,kmean_model="kmean_model.pkl", data="data/data_appended.csv", ids_clusters="ids.txt", taille_playlist=60):
         try:
             self.kmean_model = joblib.load(kmean_model)
         except:
@@ -31,12 +31,11 @@ class FindSimilarSong:
 
         columns = ['valence', 'year', 'acousticness', 'artists', 'danceability', 'duration_ms', 'energy', 'explicit',
                    'id', 'instrumentalness', 'key', 'liveness', 'loudness', 'mode', 'name', 'popularity',
-                   'release_date', 'speechiness', 'tempo']
+                   'release_date', 'speechiness', 'tempo','genre']
         self.data = shuffle(self.data, random_state=42)
-        self.data = self.data.head(20000)
         self.df = pd.DataFrame(self.data, columns=columns)
 
-        drop_columns = ['name', 'artists', 'release_date', 'year']
+        drop_columns = ['name', 'artists', 'release_date', 'year','genre']
 
         scaler = MinMaxScaler()
         self.df['year'] = scaler.fit_transform(self.df[['year']])

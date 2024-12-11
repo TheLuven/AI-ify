@@ -80,7 +80,7 @@ class FindSimilarSong:
                     nb_delete += 1
 
         for i in range(nb_delete):
-            ids_for_playlist += self._get_similar_song(reference_ids[i],1,ids_for_playlist)
+            ids_for_playlist += self._get_similar_song(reference_ids[i],1,reference_ids, ids_for_playlist)
 
         return ids_for_playlist
 
@@ -90,7 +90,7 @@ class FindSimilarSong:
 
 
 
-    def _get_similar_song(self, song_id, nb_voisin, song_already_selected = []):
+    def _get_similar_song(self, song_id, nb_voisin,ignore_ids, song_already_selected = []):
         try:
             song = self.df[self.data["id"] == song_id]
             song = song.drop(columns=["cluster","id"],errors='ignore')
@@ -123,13 +123,19 @@ class FindSimilarSong:
         # Get the indices of the n_neighbors closest songs
         if len(song_already_selected) == 0:
             if len(sorted_distance) < nb_voisin:
-                closest_indices = [x[0] for x in sorted_distance]
+                closest_indices = [x[0] for x in sorted_distance if x[0] not in ignore_ids]
             else:
-                closest_indices = [x[0] for x in sorted_distance[:nb_voisin]]
+                closest_indices = [x[0] for x in sorted_distance[:nb_voisin] if x[0] not in ignore_ids]
+                if len(closest_indices) < nb_voisin:
+                    for i in range(len(sorted_distance)):
+                        if sorted_distance[i][0] not in ignore_ids and sorted_distance[i][0] not in closest_indices:
+                            closest_indices.append(sorted_distance[i][0])
+                        if len(closest_indices) == nb_voisin:
+                            break
         else:
             closest_indices = []
             for i in range(len(sorted_distance)):
-                if sorted_distance[i][0] not in song_already_selected:
+                if sorted_distance[i][0] not in song_already_selected and sorted_distance[i][0] not in ignore_ids:
                     closest_indices.append(sorted_distance[i][0])
                 if len(closest_indices) == nb_voisin:
                     break
@@ -146,8 +152,8 @@ class FindSimilarSong:
             nb_song[index] += 1
             index += 1
 
-        for song_id in list_song_id:
-            songs = self._get_similar_song(song_id, nb_song_by_cluster)
+        for i in range(len(list_song_id)):
+            songs = self._get_similar_song(list_song_id[i], nb_song[i], list_song_id)
             clusters_song.append(songs)
 
         ids_for_new_playlist = []

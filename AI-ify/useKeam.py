@@ -1,8 +1,10 @@
 import numpy as np
 import pandas as pd
 from matplotlib import pyplot as plt
+from requests import delete
 from scipy.cluster.hierarchy import linkage, dendrogram
 from scipy.spatial.distance import squareform
+from scipy.stats import false_discovery_control
 from sklearn import manifold
 from sklearn.decomposition import PCA
 from sklearn.metrics import euclidean_distances
@@ -62,8 +64,33 @@ class FindSimilarSong:
         self.taille_playlist = taille_playlist
 
 
+    def _check_unicity(self, ids_for_playlist):
+        for i in range(len(ids_for_playlist)):
+            for j in range(i+1,len(ids_for_playlist)):
+                if ids_for_playlist[i] == ids_for_playlist[j]:
+                    return False
+        return True
 
-    def _get_similar_song(self, song_id, nb_voisin):
+    def _delete_and_replace(self,ids_for_playlist, reference_ids):
+        nb_delete = 0
+        for i in range(len(ids_for_playlist)):
+            for j in range(i+1,len(ids_for_playlist)):
+                if ids_for_playlist[i] == ids_for_playlist[j]:
+                    ids_for_playlist.pop(i)
+                    nb_delete += 1
+
+        for i in range(nb_delete):
+            ids_for_playlist += self._get_similar_song(reference_ids[i],1,ids_for_playlist)
+
+        return ids_for_playlist
+
+
+
+
+
+
+
+    def _get_similar_song(self, song_id, nb_voisin, song_already_selected = []):
         try:
             song = self.df[self.data["id"] == song_id]
             song = song.drop(columns=["cluster","id"],errors='ignore')
@@ -89,14 +116,23 @@ class FindSimilarSong:
         new_tab_dist = []
         for i in range(len(distances)):
             if distances[i] != 0:
-                new_tab_dist.append((ids_in_cluster[i],distances[i]))
+                if ids_in_cluster[i] != song_id:
+                    new_tab_dist.append((ids_in_cluster[i],distances[i]))
 
         sorted_distance = sorted(new_tab_dist, key=lambda x: x[1])
         # Get the indices of the n_neighbors closest songs
-        if len(sorted_distance) < nb_voisin:
-            closest_indices = [x[0] for x in sorted_distance]
+        if len(song_already_selected) == 0:
+            if len(sorted_distance) < nb_voisin:
+                closest_indices = [x[0] for x in sorted_distance]
+            else:
+                closest_indices = [x[0] for x in sorted_distance[:nb_voisin]]
         else:
-            closest_indices = [x[0] for x in sorted_distance[:nb_voisin]]
+            closest_indices = []
+            for i in range(len(sorted_distance)):
+                if sorted_distance[i][0] not in song_already_selected:
+                    closest_indices.append(sorted_distance[i][0])
+                if len(closest_indices) == nb_voisin:
+                    break
 
         return closest_indices
 
@@ -104,6 +140,12 @@ class FindSimilarSong:
     def find_songs_for_playlist(self, list_song_id):
         clusters_song = []
         nb_song_by_cluster = self.taille_playlist // len(list_song_id)
+        nb_song = [nb_song_by_cluster for _ in range(len(list_song_id))]
+        index = 0
+        while sum(nb_song) < self.taille_playlist and index < len(nb_song):
+            nb_song[index] += 1
+            index += 1
+
         for song_id in list_song_id:
             songs = self._get_similar_song(song_id, nb_song_by_cluster)
             clusters_song.append(songs)
@@ -111,7 +153,9 @@ class FindSimilarSong:
         ids_for_new_playlist = []
         for songs in clusters_song:
             ids_for_new_playlist.extend(songs)
-        return ids_for_new_playlist
 
-f = FindSimilarSong()
-f.find_songs_for_playlist(["0XGcXc6VkB5dx6RNWxV0rF","2kPA4clZYYrB9Cb7Uzh5YG"])
+        if not self._check_unicity(ids_for_new_playlist):
+            ids_for_new_playlist = self._delete_and_replace(ids_for_new_playlist,list_song_id)
+
+
+        return ids_for_new_playlist

@@ -16,6 +16,7 @@ from sklearn.pipeline import Pipeline
 from sklearn.utils import shuffle
 from sklearn.preprocessing import MinMaxScaler
 import joblib
+from collections import Counter
 
 
 class FindSimilarSong:
@@ -88,6 +89,19 @@ class FindSimilarSong:
         if len(duplicated_ids) > 0:
             state_duplicated = False
         return state_duplicated, duplicated_ids
+
+
+    def _getStats(self,songs,song_reference):
+        with open("stats.txt", "a") as stats_file:
+            stats_file.write(self.copied_df[self.copied_df["id"] == song_reference]["name"].values[0] + " " +
+                             self.copied_df[self.copied_df["id"] == song_reference]["artists"].values[0] + "\n")
+
+            for song in songs:
+                stats_file.write("\t" + self.copied_df[self.copied_df["id"] == song]["name"].values[0] + " " + self.copied_df[self.copied_df["id"] == song]["artists"].values[0] + "\n")
+
+            stats_file.write("\n")
+            stats_file.close()
+
 
     def _delete_and_replace(self,ids_for_playlist, reference_ids, duplicated_ids,ignore_ids):
         nb_delete = 0
@@ -192,9 +206,16 @@ class FindSimilarSong:
             nb_song[index] += 1
             index += 1
 
-        ignore_ids = list_song_id
+        filtered_top_df = self.copied_df[self.copied_df["id"].isin(list_song_id)]
+        filtered_playlist = self.copied_df[self.copied_df["id"].isin(self.ids)]
+        filtered_df = pd.concat([filtered_top_df, filtered_playlist])
+        duplicates = filtered_df.duplicated(subset=["name", "artists"], keep=False)
+        duplicated_ids_top = filtered_df[duplicates]["id"].tolist()
+
+        ignore_ids = list_song_id + duplicated_ids_top
         for i in range(len(list_song_id)):
             songs, ignore_ids = self._get_similar_song(list_song_id[i], nb_song[i], ignore_ids)
+            self._getStats(songs,list_song_id[i])
             clusters_song.append(songs)
 
         ids_for_new_playlist = []
@@ -207,3 +228,65 @@ class FindSimilarSong:
 
 
         return ids_for_new_playlist
+
+
+    def find_songs_for_playlist_version2(self,top50):
+        clusters_song = []
+
+        for song_id in top50:
+            try:
+                song = self.df[self.data["id"] == song_id]
+                song = song.drop(columns=["cluster", "id"], errors='ignore')
+            except:
+                raise ValueError("The song is not found")
+            clusters_song.append(self.kmean_model.predict(song))
+
+        clusters_frequences = {}
+        for element, count in Counter(map(tuple, clusters_song)).items():
+            clusters_frequences[str(element[0])] = count
+
+        nb_song_by_cluster = {}
+        for key in clusters_frequences.keys():
+            nb_song_by_cluster[key] = round(self.taille_playlist * (clusters_frequences[key] / len(top50)))
+
+        print(sum(nb_song_by_cluster.values()))
+        sorted_clusters_frequences = dict(sorted(nb_song_by_cluster.items(), key=lambda item: item[1], reverse=True))
+        print(sorted_clusters_frequences)
+
+        filtered_top_df = self.copied_df[self.copied_df["id"].isin(top50)]
+        filtered_playlist = self.copied_df[self.copied_df["id"].isin(self.ids)]
+        filtered_df = pd.concat([filtered_top_df, filtered_playlist])
+        duplicates = filtered_df.duplicated(subset=["name", "artists"], keep=False)
+        duplicated_ids_top = filtered_df[duplicates]["id"].tolist()
+
+        ignore_ids = top50 + duplicated_ids_top
+
+        return self._get_song_according_to_cluster(sorted_clusters_frequences,ignore_ids,top50)
+
+
+
+
+    def _get_song_according_to_cluster(self,sorted_clusters_frequences,ignore_ids,top50):
+        ids_for_new_playlist = []
+        for key in sorted_clusters_frequences.keys():
+            nb_song = sorted_clusters_frequences[key]
+            cluster_songs = self.df[self.df["cluster"] == int(key)]
+
+            centroid = cluster_songs.drop(columns=["cluster", "id"], errors='ignore').mean()
+
+            distances = np.linalg.norm(cluster_songs.drop(columns=["cluster", "id"], errors='ignore').values - centroid.values, axis=1)
+            closest_songs = cluster_songs.iloc[np.argsort(distances)[:nb_song]]["id"].tolist()
+
+            ids_for_new_playlist.extend(closest_songs)
+
+            #self._getStats(songs,top50[int(key)])
+            #ids_for_new_playlist.extend(songs)
+        is_unique, duplicated_ids = self._check_unicity(ids_for_new_playlist, top50)
+        ignore_ids = ignore_ids + duplicated_ids
+        if not is_unique:
+            print("n est pas unique")
+             #ids_for_new_playlist = self._delete_and_replace(ids_for_new_playlist,top50,duplicated_ids,ignore_ids)
+        return ids_for_new_playlist
+
+
+

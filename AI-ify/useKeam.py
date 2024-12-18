@@ -21,7 +21,7 @@ from collections import Counter
 
 class FindSimilarSong:
 
-    def __init__(self,kmean_model="kmean_model.pkl", data="data/data_appended.csv", ids_clusters="ids.txt", taille_playlist=60):
+    def __init__(self,kmean_model="kmean_model.pkl", data="data/data_appended.csv", taille_playlist=60):
         try:
             self.kmean_model = joblib.load(kmean_model)
         except:
@@ -50,15 +50,11 @@ class FindSimilarSong:
 
         self.df = self.df.drop(columns=drop_columns, errors='ignore')
 
+        dataframe = self.df.copy()
+        dataframe = dataframe.drop(columns=["id"], errors='ignore')
 
-        self.clusters = []
-        self.ids = []
-        with open(ids_clusters, 'r') as file:
-            clusters = file.readlines()
-            for line in clusters:
-                tab = line.split(" ")
-                self.ids.append(tab[0])
-                self.clusters.append(int(tab[1]))
+        self.clusters = self.kmean_model.predict(dataframe)
+        self.ids = self.df["id"].tolist()
 
         self.df["cluster"] = self.clusters
 
@@ -67,14 +63,7 @@ class FindSimilarSong:
 
     def _check_unicity(self, ids_for_playlist, top50):
         state_duplicated = True
-        # for i in range(len(ids_for_playlist)):
-        #     for j in range(i+1,len(ids_for_playlist)):
-        #         # if ids_for_playlist[i] == ids_for_playlist[j]:
-        #         #     state_duplicated = False
-        #         if self.copied_df[self.copied_df["id"] == ids_for_playlist[i]]["name"].values[0] == self.copied_df[self.copied_df["id"] == ids_for_playlist[j]]["name"].values[0] and self.copied_df[self.copied_df["id"] == ids_for_playlist[i]]["artists"].values[0] == self.copied_df[self.copied_df["id"] == ids_for_playlist[j]]["artists"].values[0]:
-        #             if  ids_for_playlist[j] not in duplicated_ids:
-        #                 duplicated_ids.append(ids_for_playlist[j])
-        #                 state_duplicated = False
+
         filtered_top_df = self.copied_df[self.copied_df["id"].isin(top50)]
         filtered_playlist = self.copied_df[self.copied_df["id"].isin(ids_for_playlist)]
         filtered_df = pd.concat([filtered_top_df, filtered_playlist])
@@ -105,27 +94,6 @@ class FindSimilarSong:
 
     def _delete_and_replace(self,ids_for_playlist, reference_ids, duplicated_ids,ignore_ids):
         nb_delete = 0
-        ids_to_delete = []
-        # for i in range(len(ids_for_playlist)):
-        #     for j in range(i+1,len(ids_for_playlist)):
-        #         # if j-nb_delete <len(ids_for_playlist) and ids_for_playlist[i] == ids_for_playlist[j]:
-        #         #     ids_to_delete.append(j)
-        #         if self.copied_df[self.copied_df["id"] == ids_for_playlist[i]]["name"].values[0] == self.copied_df[self.copied_df["id"] == ids_for_playlist[j]]["name"].values[0] and self.copied_df[self.copied_df["id"] == ids_for_playlist[i]]["artists"].values[0] == self.copied_df[self.copied_df["id"] == ids_for_playlist[j]]["artists"].values[0]:
-        #             if  ids_for_playlist[j] in duplicated_ids:
-        #                 ids_to_delete.append(j)
-
-        # filtered_df = self.copied_df[self.copied_df["id"].isin(ids_for_playlist)]
-        # duplicates = filtered_df.duplicated(subset=["name", "artists"], keep='first')
-        # duplicated_ids = filtered_df[duplicates]["id"].tolist()
-
-        # for i in range(len(ids_to_delete)):
-        #     if ids_to_delete.count(ids_to_delete[i]) > 1:
-        #         ids_to_delete.remove(ids_to_delete[i])
-        #
-        # for i in ids_to_delete:
-        #     if i in ids_for_playlist:
-        #         ids_for_playlist.remove(i)
-        #         nb_delete += 1
 
         for id in duplicated_ids:
             if id in ids_for_playlist:
@@ -279,14 +247,13 @@ class FindSimilarSong:
 
             ids_for_new_playlist.extend(closest_songs)
 
-            #self._getStats(songs,top50[int(key)])
-            #ids_for_new_playlist.extend(songs)
         is_unique, duplicated_ids = self._check_unicity(ids_for_new_playlist, top50)
         ignore_ids = ignore_ids + duplicated_ids
         if not is_unique:
             print("n est pas unique")
              #ids_for_new_playlist = self._delete_and_replace(ids_for_new_playlist,top50,duplicated_ids,ignore_ids)
         return ids_for_new_playlist
+
 
 
 

@@ -1,0 +1,4 @@
+seaborn
+plotly
+scikit-learn
+spotipy==2.25.0

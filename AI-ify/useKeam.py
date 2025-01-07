@@ -1,18 +1,5 @@
 import numpy as np
 import pandas as pd
-from matplotlib import pyplot as plt
-from requests import delete
-from scipy.cluster.hierarchy import linkage, dendrogram
-from scipy.spatial.distance import squareform
-from scipy.stats import false_discovery_control
-from sklearn import manifold
-from sklearn.decomposition import PCA
-from sklearn.metrics import euclidean_distances
-from sklearn.cluster import KMeans
-from sklearn.metrics import silhouette_score
-from sklearn.preprocessing import StandardScaler, OneHotEncoder
-from sklearn.compose import ColumnTransformer
-from sklearn.pipeline import Pipeline
 from sklearn.utils import shuffle
 from sklearn.preprocessing import MinMaxScaler
 import joblib

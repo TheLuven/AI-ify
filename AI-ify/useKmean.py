@@ -67,6 +67,7 @@ class FindSimilarSong:
         return state_duplicated, duplicated_ids
 
 
+    ## Permet de savoir à partir de quelle chanson du top 50 vient les chansons similaires misent dans la playlist
     def _getStats(self,songs,song_reference):
         with open("stats.txt", "a") as stats_file:
             stats_file.write(self.copied_df[self.copied_df["id"] == song_reference]["name"].values[0] + " " +
@@ -152,6 +153,7 @@ class FindSimilarSong:
         return closest_indices, ignore_ids
 
 
+    ## Permet de trouver concevoir une playlist se composant de chansons proches de chaque chanson du top 50
     def find_songs_for_playlist(self, list_song_id):
         clusters_song = []
         nb_song_by_cluster = self.taille_playlist // len(list_song_id)
@@ -185,6 +187,7 @@ class FindSimilarSong:
         return ids_for_new_playlist
 
 
+    ## Permet de trouver concevoir une playlist se composant de chansons proches des centres des clusters des chansons du top 50
     def find_songs_for_playlist_version2(self,top50):
         clusters_song = []
 

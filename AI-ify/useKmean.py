@@ -3,11 +3,12 @@ import pandas as pd
 from sklearn.utils import shuffle
 from sklearn.preprocessing import MinMaxScaler
 import joblib
+from collections import Counter
 
 
 class FindSimilarSong:
 
-    def __init__(self,kmean_model="kmean_model.pkl", data="data/data_appended.csv", ids_clusters="ids.txt", taille_playlist=60):
+    def __init__(self,kmean_model="kmean_model.pkl", data="data/data_appended.csv", taille_playlist=60):
         try:
             self.kmean_model = joblib.load(kmean_model)
         except:
@@ -15,17 +16,16 @@ class FindSimilarSong:
 
         try:
             self.data = pd.read_csv(data)
+            self.data = shuffle(self.data, random_state=42)
         except:
             raise ValueError("The reference data is not found")
 
         columns = ['valence', 'year', 'acousticness', 'artists', 'danceability', 'duration_ms', 'energy', 'explicit',
                    'id', 'instrumentalness', 'key', 'liveness', 'loudness', 'mode', 'name', 'popularity',
                    'release_date', 'speechiness', 'tempo','genre']
-        self.data = shuffle(self.data, random_state=42)
-        self.df = pd.DataFrame(self.data, columns=columns)
-
         drop_columns = ['name', 'artists', 'release_date', 'year','genre']
 
+        self.df = pd.DataFrame(self.data, columns=columns)
         scaler = MinMaxScaler()
         self.df['year'] = scaler.fit_transform(self.df[['year']])
         self.df['duration_ms'] = scaler.fit_transform(self.df[['duration_ms']])
@@ -33,47 +33,67 @@ class FindSimilarSong:
         self.df['loudness'] = scaler.fit_transform(self.df[['loudness']])
         self.df['popularity'] = scaler.fit_transform(self.df[['popularity']])
         self.df['tempo'] = scaler.fit_transform(self.df[['tempo']])
+        self.copied_df = self.df.copy()
 
         self.df = self.df.drop(columns=drop_columns, errors='ignore')
 
+        dataframe = self.df.copy()
+        dataframe = dataframe.drop(columns=["id"], errors='ignore')
 
-        self.clusters = []
-        self.ids = []
-        with open(ids_clusters, 'r') as file:
-            clusters = file.readlines()
-            for line in clusters:
-                tab = line.split(" ")
-                self.ids.append(tab[0])
-                self.clusters.append(int(tab[1]))
+        self.clusters = self.kmean_model.predict(dataframe)
+        self.ids = self.df["id"].tolist()
 
         self.df["cluster"] = self.clusters
 
         self.taille_playlist = taille_playlist
 
 
-    def _check_unicity(self, ids_for_playlist):
-        for i in range(len(ids_for_playlist)):
-            for j in range(i+1,len(ids_for_playlist)):
-                if ids_for_playlist[i] == ids_for_playlist[j]:
-                    return False
-        return True
+    def _check_unicity(self, ids_for_playlist, top50):
+        state_duplicated = True
 
-    def _delete_and_replace(self,ids_for_playlist, reference_ids):
+        filtered_top_df = self.copied_df[self.copied_df["id"].isin(top50)]
+        filtered_playlist = self.copied_df[self.copied_df["id"].isin(ids_for_playlist)]
+        filtered_df = pd.concat([filtered_top_df, filtered_playlist])
+        duplicates = filtered_df.duplicated(subset=["name", "artists"], keep=False)
+        duplicated_ids_top = filtered_df[duplicates]["id"].tolist()
+
+        filtered_df = self.copied_df[self.copied_df["id"].isin(ids_for_playlist)]
+        duplicates = filtered_df.duplicated(subset=["name", "artists"], keep='first')
+        duplicated_ids_name_artist = filtered_df[duplicates]["id"].tolist()
+
+        duplicated_ids = duplicated_ids_top + duplicated_ids_name_artist
+        if len(duplicated_ids) > 0:
+            state_duplicated = False
+        return state_duplicated, duplicated_ids
+
+
+    def _getStats(self,songs,song_reference):
+        with open("stats.txt", "a") as stats_file:
+            stats_file.write(self.copied_df[self.copied_df["id"] == song_reference]["name"].values[0] + " " +
+                             self.copied_df[self.copied_df["id"] == song_reference]["artists"].values[0] + "\n")
+
+            for song in songs:
+                stats_file.write("\t" + self.copied_df[self.copied_df["id"] == song]["name"].values[0] + " " + self.copied_df[self.copied_df["id"] == song]["artists"].values[0] + "\n")
+
+            stats_file.write("\n")
+            stats_file.close()
+
+
+    def _delete_and_replace(self,ids_for_playlist, reference_ids, duplicated_ids,ignore_ids):
         nb_delete = 0
-        for i in range(len(ids_for_playlist)):
-            for j in range(i+1,len(ids_for_playlist)):
-                if ids_for_playlist[i] == ids_for_playlist[j]:
-                    ids_for_playlist.pop(i)
-                    nb_delete += 1
 
+        for id in duplicated_ids:
+            if id in ids_for_playlist:
+                ids_for_playlist.remove(id)
+                nb_delete += 1
+
+
+        ignore_ids = ignore_ids + reference_ids + duplicated_ids
         for i in range(nb_delete):
-            ids_for_playlist += self._get_similar_song(reference_ids[i],1,reference_ids, ids_for_playlist)
+            id_playslist , ignore_ids= self._get_similar_song(reference_ids[i],1,ignore_ids, ids_for_playlist)
+            ids_for_playlist.append(id_playslist[0])
 
         return ids_for_playlist
-
-
-
-
 
 
 
@@ -127,7 +147,9 @@ class FindSimilarSong:
                 if len(closest_indices) == nb_voisin:
                     break
 
-        return closest_indices
+        ignore_ids += closest_indices
+
+        return closest_indices, ignore_ids
 
 
     def find_songs_for_playlist(self, list_song_id):
@@ -139,16 +161,86 @@ class FindSimilarSong:
             nb_song[index] += 1
             index += 1
 
+        filtered_top_df = self.copied_df[self.copied_df["id"].isin(list_song_id)]
+        filtered_playlist = self.copied_df[self.copied_df["id"].isin(self.ids)]
+        filtered_df = pd.concat([filtered_top_df, filtered_playlist])
+        duplicates = filtered_df.duplicated(subset=["name", "artists"], keep=False)
+        duplicated_ids_top = filtered_df[duplicates]["id"].tolist()
+
+        ignore_ids = list_song_id + duplicated_ids_top
         for i in range(len(list_song_id)):
-            songs = self._get_similar_song(list_song_id[i], nb_song[i], list_song_id)
+            songs, ignore_ids = self._get_similar_song(list_song_id[i], nb_song[i], ignore_ids)
+            self._getStats(songs,list_song_id[i])
             clusters_song.append(songs)
 
         ids_for_new_playlist = []
         for songs in clusters_song:
             ids_for_new_playlist.extend(songs)
 
-        if not self._check_unicity(ids_for_new_playlist):
-            ids_for_new_playlist = self._delete_and_replace(ids_for_new_playlist,list_song_id)
+        is_unique, duplicated_ids = self._check_unicity(ids_for_new_playlist, list_song_id)
+        if not is_unique:
+            ids_for_new_playlist = self._delete_and_replace(ids_for_new_playlist,list_song_id,duplicated_ids,ignore_ids)
 
 
         return ids_for_new_playlist
+
+
+    def find_songs_for_playlist_version2(self,top50):
+        clusters_song = []
+
+        for song_id in top50:
+            try:
+                song = self.df[self.data["id"] == song_id]
+                song = song.drop(columns=["cluster", "id"], errors='ignore')
+            except:
+                raise ValueError("The song is not found")
+            clusters_song.append(self.kmean_model.predict(song))
+
+        clusters_frequences = {}
+        for element, count in Counter(map(tuple, clusters_song)).items():
+            clusters_frequences[str(element[0])] = count
+
+        nb_song_by_cluster = {}
+        for key in clusters_frequences.keys():
+            nb_song_by_cluster[key] = round(self.taille_playlist * (clusters_frequences[key] / len(top50)))
+
+        print(sum(nb_song_by_cluster.values()))
+        sorted_clusters_frequences = dict(sorted(nb_song_by_cluster.items(), key=lambda item: item[1], reverse=True))
+        print(sorted_clusters_frequences)
+
+        filtered_top_df = self.copied_df[self.copied_df["id"].isin(top50)]
+        filtered_playlist = self.copied_df[self.copied_df["id"].isin(self.ids)]
+        filtered_df = pd.concat([filtered_top_df, filtered_playlist])
+        duplicates = filtered_df.duplicated(subset=["name", "artists"], keep=False)
+        duplicated_ids_top = filtered_df[duplicates]["id"].tolist()
+
+        ignore_ids = top50 + duplicated_ids_top
+
+        return self._get_song_according_to_cluster(sorted_clusters_frequences,ignore_ids,top50)
+
+
+
+
+    def _get_song_according_to_cluster(self,sorted_clusters_frequences,ignore_ids,top50):
+        ids_for_new_playlist = []
+        for key in sorted_clusters_frequences.keys():
+            nb_song = sorted_clusters_frequences[key]
+            cluster_songs = self.df[self.df["cluster"] == int(key)]
+
+            centroid = cluster_songs.drop(columns=["cluster", "id"], errors='ignore').mean()
+
+            distances = np.linalg.norm(cluster_songs.drop(columns=["cluster", "id"], errors='ignore').values - centroid.values, axis=1)
+            closest_songs = cluster_songs.iloc[np.argsort(distances)[:nb_song]]["id"].tolist()
+
+            ids_for_new_playlist.extend(closest_songs)
+
+        is_unique, duplicated_ids = self._check_unicity(ids_for_new_playlist, top50)
+        ignore_ids = ignore_ids + duplicated_ids
+        if not is_unique:
+            print("n est pas unique")
+             #ids_for_new_playlist = self._delete_and_replace(ids_for_new_playlist,top50,duplicated_ids,ignore_ids)
+        return ids_for_new_playlist
+
+
+
+
